@@ -294,12 +294,13 @@ window.MathJax = {
     displayMath: [['\\[', '\\]'], ['$$', '$$']],
     processEscapes: true
   },
-  svg: {
-    fontCache: 'global'
+  chtml: {
+    scale: 0.95,
+    matchFontHeight: false
   }
 };
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 
 <style>
   :root {
@@ -443,7 +444,7 @@ window.MathJax = {
     font-weight:800;
     letter-spacing:.2px;
     color:#111827;
-    line-height:1.32;
+    line-height:1.42;
     overflow-wrap:anywhere;
   }
 
@@ -471,7 +472,7 @@ window.MathJax = {
 
   .note {
     font-size:15px;
-    line-height:1.75;
+    line-height:1.95;
     color:#374151;
     background:#f8fafc;
     border:1px solid #edf1f7;
@@ -482,7 +483,40 @@ window.MathJax = {
 
   .level3 .note {
     font-size:15px;
-    line-height:1.78;
+    line-height:1.98;
+  }
+
+  .note mjx-container,
+  .title mjx-container,
+  .q-stem mjx-container,
+  .q-option mjx-container,
+  .q-analysis mjx-container {
+    display:inline-block;
+    max-width:100%;
+    vertical-align:-0.18em;
+    line-height:normal;
+    margin:0 .12em;
+    white-space:normal;
+  }
+
+  .note mjx-container[display="true"],
+  .title mjx-container[display="true"],
+  .q-stem mjx-container[display="true"],
+  .q-option mjx-container[display="true"],
+  .q-analysis mjx-container[display="true"] {
+    display:block;
+    margin:.55em auto;
+    overflow-x:auto;
+    overflow-y:hidden;
+    text-align:center;
+  }
+
+  .note mjx-container *,
+  .title mjx-container *,
+  .q-stem mjx-container *,
+  .q-option mjx-container *,
+  .q-analysis mjx-container * {
+    line-height:normal;
   }
 
   .imgs {
@@ -490,6 +524,8 @@ window.MathJax = {
     display:flex;
     flex-direction:column;
     gap:12px;
+    padding:0 12px;
+    box-sizing:border-box;
   }
 
   .imgs img {
@@ -649,7 +685,7 @@ window.MathJax = {
 
   .q-stem {
     font-size:16px;
-    line-height:1.65;
+    line-height:1.75;
     color:#1f2937;
     margin-bottom:12px;
   }
@@ -664,7 +700,7 @@ window.MathJax = {
     background:#f8fafc;
     margin:8px 0;
     cursor:pointer;
-    line-height:1.55;
+    line-height:1.7;
   }
 
   .q-option:hover {
@@ -697,7 +733,7 @@ window.MathJax = {
     background:#fff7ed;
     border:1px solid #fed7aa;
     color:#7c2d12;
-    line-height:1.7;
+    line-height:1.8;
   }
 
   .q-summary {
@@ -785,11 +821,7 @@ const questions = __QUESTIONS_JSON__;
 
 const colors = ['#EF6C6C','#F59E0B','#11A683','#5B8DEF','#8B5CF6','#14B8A6','#EC4899','#64748B'];
 
-// 这里是真正生效的节点宽度。
-// 二级、三级都已经放宽，三级宽度较大，用来减少长文字换行。
 const levelWidths = {1: 180, 2: 260, 3: 720};
-
-// 横向、纵向间距都已放松。
 const gapX = 110;
 const gapY = 72;
 
@@ -800,7 +832,6 @@ let ty = 20;
 let positioned = [];
 let clozeCounter = 1;
 
-// 真实 DOM 高度测量结果。用于解决长文本、图片、公式渲染后撑高导致的上下重叠。
 let measuredHeights = {};
 let rerenderingForHeight = false;
 
@@ -811,7 +842,7 @@ function stripCloze(s) {
 function estimateTextHeight(text, charsPerLine, lineHeight, base=0) {
   const normalized = stripCloze(text || '').replace(/\$\$|\\\(|\\\)|\\\[|\\\]/g, '');
   const len = [...normalized].length;
-  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]/g) || []).length * 18;
+  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]|\$|\\\(|\\\)/g) || []).length * 14;
   return base + Math.max(1, Math.ceil(len / charsPerLine)) * lineHeight + formulaExtra;
 }
 
@@ -823,23 +854,21 @@ function measureNode(node) {
   let h = node.level === 1 ? 88 : 64;
 
   if (node.level === 1) {
-    h += estimateTextHeight(node.title || '', 10, 20, 0);
+    h += estimateTextHeight(node.title || '', 10, 22, 0);
   } else if (node.level === 2) {
-    h += estimateTextHeight(node.title || '', 14, 22, 0);
+    h += estimateTextHeight(node.title || '', 14, 24, 0);
   } else {
-    h += estimateTextHeight(node.title || '', 38, 24, 0);
+    h += estimateTextHeight(node.title || '', 38, 26, 0);
   }
 
   if (noteCount) {
     for (const note of node.notes) {
-      h += estimateTextHeight(note, 48, 28, 28);
+      h += estimateTextHeight(note, 48, 30, 32);
     }
   }
 
-  // 图片现在按节点内容区宽度铺开，因此需要给图片预留更大高度。
-  // 真实高度仍会在后续 DOM 测量中进一步校正。
   if (imgCount) {
-    h += imgCount * Math.min(560, Math.max(280, w * 0.62));
+    h += imgCount * Math.min(500, Math.max(240, w * 0.52));
   }
 
   const measured = measuredHeights[node.id] || 0;
@@ -972,10 +1001,8 @@ function updateMeasuredHeights() {
     const id = el.dataset.nodeId;
     const inner = el.querySelector('.node-inner');
 
-    // 必须测内部内容高度，而不是测外层 .node。
-    // 外层有 min-height，直接测外层会导致每一轮高度虚增。
     const contentHeight = Math.ceil(inner ? inner.scrollHeight : el.scrollHeight);
-    const targetHeight = contentHeight + 34;
+    const targetHeight = contentHeight + 38;
 
     if (!measuredHeights[id] || targetHeight > measuredHeights[id] + 3) {
       measuredHeights[id] = targetHeight;
@@ -1123,7 +1150,6 @@ function render(keepView=false, heightPass=0) {
     applyTransform();
   }
 
-  // 等公式、图片和浏览器布局完成后，测真实高度；若高度变大，则自动重排。
   typesetMath()
     .then(() => waitForImagesInNodes())
     .then(() => {
