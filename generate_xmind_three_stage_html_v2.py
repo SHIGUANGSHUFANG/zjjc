@@ -261,7 +261,6 @@ def parse_questions(docx_path: Path) -> List[Dict[str, object]]:
             else:
                 last_field = None
         else:
-            # 兼容 Word 自动换行或分段导致的续写。
             if last_field == "stem":
                 cur["stem"] = (str(cur.get("stem", "")) + text).strip()
             elif last_field == "answer":
@@ -444,7 +443,7 @@ window.MathJax = {
     font-weight:800;
     letter-spacing:.2px;
     color:#111827;
-    line-height:1.42;
+    line-height:1.38;
     overflow-wrap:anywhere;
   }
 
@@ -472,7 +471,7 @@ window.MathJax = {
 
   .note {
     font-size:15px;
-    line-height:1.95;
+    line-height:1.82;
     color:#374151;
     background:#f8fafc;
     border:1px solid #edf1f7;
@@ -483,7 +482,7 @@ window.MathJax = {
 
   .level3 .note {
     font-size:15px;
-    line-height:1.98;
+    line-height:1.86;
   }
 
   .note mjx-container,
@@ -842,7 +841,7 @@ function stripCloze(s) {
 function estimateTextHeight(text, charsPerLine, lineHeight, base=0) {
   const normalized = stripCloze(text || '').replace(/\$\$|\\\(|\\\)|\\\[|\\\]/g, '');
   const len = [...normalized].length;
-  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]|\$|\\\(|\\\)/g) || []).length * 14;
+  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]|\$|\\\(|\\\)/g) || []).length * 12;
   return base + Math.max(1, Math.ceil(len / charsPerLine)) * lineHeight + formulaExtra;
 }
 
@@ -851,31 +850,33 @@ function measureNode(node) {
   const noteCount = (node.notes || []).length;
   const imgCount = (node.images || []).length;
 
-  let h = node.level === 1 ? 88 : 64;
+  let h = node.level === 1 ? 78 : 54;
 
   if (node.level === 1) {
-    h += estimateTextHeight(node.title || '', 10, 22, 0);
+    h += estimateTextHeight(node.title || '', 10, 20, 0);
   } else if (node.level === 2) {
-    h += estimateTextHeight(node.title || '', 14, 24, 0);
+    h += estimateTextHeight(node.title || '', 14, 22, 0);
   } else {
-    h += estimateTextHeight(node.title || '', 38, 26, 0);
+    h += estimateTextHeight(node.title || '', 38, 24, 0);
   }
 
   if (noteCount) {
     for (const note of node.notes) {
-      h += estimateTextHeight(note, 48, 30, 32);
+      h += estimateTextHeight(note, 48, 27, 24);
     }
   }
 
+  // 这里只给图片一个较小的初始预估高度。
+  // 图片加载完成后会用真实 DOM 高度重新测量和重排，避免提前预留过多空白。
   if (imgCount) {
-    h += imgCount * Math.min(500, Math.max(240, w * 0.52));
+    h += imgCount * 110;
   }
 
   const measured = measuredHeights[node.id] || 0;
 
   return {
     w,
-    h: Math.max(h, measured, node.level === 1 ? 86 : 70)
+    h: Math.max(h, measured, node.level === 1 ? 76 : 62)
   };
 }
 
@@ -947,7 +948,7 @@ function preventLevel3Overlap(rootNode) {
     .sort((a, b) => a.y - b.y);
 
   let bottom = -Infinity;
-  const safeGap = 48;
+  const safeGap = 44;
 
   for (const n of level3) {
     if (n.y < bottom + safeGap) {
@@ -1002,9 +1003,12 @@ function updateMeasuredHeights() {
     const inner = el.querySelector('.node-inner');
 
     const contentHeight = Math.ceil(inner ? inner.scrollHeight : el.scrollHeight);
-    const targetHeight = contentHeight + 38;
+    const targetHeight = contentHeight + 18;
+    const current = measuredHeights[id] || 0;
 
-    if (!measuredHeights[id] || targetHeight > measuredHeights[id] + 3) {
+    // 这版允许高度变小，避免上一版因估算过高而留下大片空白。
+    // 同时保留 3px 容差，避免浏览器小数取整导致反复重排。
+    if (Math.abs(targetHeight - current) > 3) {
       measuredHeights[id] = targetHeight;
       changed = true;
     }
@@ -1156,7 +1160,7 @@ function render(keepView=false, heightPass=0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           window.setTimeout(() => {
-            if (!rerenderingForHeight && updateMeasuredHeights() && heightPass < 12) {
+            if (!rerenderingForHeight && updateMeasuredHeights() && heightPass < 14) {
               rerenderingForHeight = true;
               render(true, heightPass + 1);
               rerenderingForHeight = false;
