@@ -241,6 +241,19 @@ HTML_TEMPLATE = r'''<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>__TITLE__</title>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['\\(', '\\)'], ['$', '$']],
+      displayMath: [['\\[', '\\]'], ['$$', '$$']],
+      processEscapes: true
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    }
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <style>
   :root {
     --bg: #f7f7fb;
@@ -279,6 +292,7 @@ HTML_TEMPLATE = r'''<!doctype html>
   .notes { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
   .note { font-size:14px; line-height:1.65; color:#374151; background:#f8fafc; border:1px solid #edf1f7; border-radius:12px; padding:9px 11px; }
   .level3 .note { font-size:15px; line-height:1.72; }
+  mjx-container { overflow-x:auto; overflow-y:hidden; max-width:100%; }
   .imgs { margin-top:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; }
   .imgs img { max-width:190px; max-height:150px; object-fit:contain; background:white; border:1px solid #e5e7eb; border-radius:12px; padding:6px; box-shadow:0 4px 12px rgba(31,41,55,.10); }
   path.link { fill:none; stroke:var(--line); stroke-width:2.4; stroke-linecap:round; }
@@ -389,6 +403,7 @@ function layout(node, x=0, y=0) {
 function shift(node, dy) { node.y += dy; (node.children || []).forEach(c => shift(c, dy)); }
 function collect(node, arr=[]) { arr.push(node); (node.children || []).forEach(c => collect(c, arr)); return arr; }
 function escapeHTML(s) { return (s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+function typesetMath() { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise().catch(() => {}); }
 function shuffle(arr) { const a = arr.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 function renderClozeText(s) {
   let out = '', last = 0;
@@ -457,6 +472,7 @@ function render(keepView=false) {
   updateToolbar();
   if (mode === 'quiz') bindBlanks();
   if (!keepView) fitView(); else applyTransform();
+  typesetMath();
 }
 function startQuiz(){
   mode = 'quiz';
@@ -555,6 +571,7 @@ function renderQuestions(){
       <div class="q-analysis"><b>解析：</b>${escapeHTML(q.analysis || '暂无解析')}</div>
     </div>`;
   }).join('');
+  typesetMath();
 }
 function goQuestions(){
   mode = 'questions';
@@ -594,6 +611,7 @@ function submitQuestions(){
   document.getElementById('score').textContent = `试题得分：${right}/${cards.length}（正确率：${pct}%）`;
   document.getElementById('redoQuestionsBtn').style.display = '';
   document.getElementById('submitQuestionsBtn').style.display = 'none';
+  typesetMath();
   window.scrollTo(0,0);
 }
 
