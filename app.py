@@ -5,7 +5,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.docx_parser import parse_docx, inspect_docx_paragraphs
-from src.mindmap_renderer import render_mindmap_html
+from src.mindmap_renderer import render_mindmap_html, render_three_stage_html
 
 st.set_page_config(page_title="章节检测三阶段 Demo", layout="wide")
 
@@ -89,6 +89,8 @@ m2.metric("挖空题", len(blank_items))
 m3.metric("第三阶段试题", len(quiz_questions))
 m4.metric("图片", count_images(tree))
 
+standalone_html = render_three_stage_html(tree, blank_items, quiz_questions)
+
 tab1, tab2, tab3, tab4 = st.tabs(["阶段一：导图学习", "阶段二：挖空练习", "阶段三：试题检测", "调试与导出"])
 
 with tab1:
@@ -162,12 +164,21 @@ with tab3:
 
 with tab4:
     st.subheader("调试与导出")
+    st.download_button(
+        "下载三阶段 HTML 网页",
+        data=standalone_html,
+        file_name="chapter_three_stage.html",
+        mime="text/html",
+        use_container_width=True,
+    )
+    st.caption("这个 HTML 是最终可分发版本：包含导图学习、挖空练习、试题检测三个阶段。可以直接打开，也可以上传到 GitHub Pages。")
+    st.markdown("---")
     with st.expander("查看解析 JSON", expanded=False):
         st.json({"tree": tree, "blanks": blank_items, "quiz_questions": quiz_questions})
     with st.expander("查看 Word 段落样式", expanded=False):
         st.dataframe(parsed["paragraphs"], use_container_width=True)
     st.download_button(
-        "下载解析结果 JSON",
+        "下载解析结果 JSON（调试用）",
         data=str({"tree": tree, "blanks": blank_items, "quiz_questions": quiz_questions}),
         file_name="chapter_parse_result.txt",
         mime="text/plain",
