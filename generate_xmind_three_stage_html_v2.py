@@ -1,5 +1,5 @@
 """
-文件建议名：generate_xmind_three_stage_html_v3_latex_options_fixed.py
+文件建议名：generate_xmind_three_stage_html_v4_keep_cloze_state.py
 
 把“标题层级 + 挖空标记 + 试题部分”的 Word 文档生成三阶段 XMind 风格 HTML 学习页。
 
@@ -32,6 +32,7 @@ LaTeX 公式：
 - 第二阶段挖空备选项菜单中的 LaTeX 自动渲染。
 - 选择后填入空格中的 LaTeX 自动渲染。
 - 提交挖空后显示的正确答案中的 LaTeX 自动渲染。
+- 修复选择几个空后页面因高度重排而清空全部填空的问题。
 - 保留上一版的节点真实高度测量、减少空白、防重叠、图片宽度控制。
 """
 from __future__ import annotations
@@ -625,6 +626,14 @@ let clozeCounter = 1;
 let measuredHeights = {};
 let rerenderingForHeight = false;
 
+// 第二阶段挖空作答状态。
+// 页面会因为公式、图片或高度测量而自动重排；重排会重新生成所有 DOM。
+// 因此必须把已选择的答案保存在 JS 状态里，否则每次重排都会把填空清空。
+let clozeValues = {};
+let clozeSubmitted = false;
+let clozeScoreText = '';
+let clozePassed = false;
+
 function stripCloze(s) { return (s || '').replace(/\[([^\[\]|]+(?:\|[^\[\]|]+)+)\]/g, '□□'); }
 
 function estimateTextHeight(text, charsPerLine, lineHeight, base=0) {
@@ -754,10 +763,19 @@ function renderClozeText(s) {
     out += escapeHTML(s.slice(last, m.index));
     const options = m[1].split('|').map(x => x.trim()).filter(Boolean);
     const answer = options[0] || '';
-    if (mode === 'preview') out += `<span class="preview-answer">${escapeHTML(answer)}</span>`;
-    else {
+    if (mode === 'preview') {
+      out += `<span class="preview-answer">${escapeHTML(answer)}</span>`;
+    } else {
       const id = 'c' + (clozeCounter++);
-      out += `<span class="blank" id="${id}" data-answer="${escapeHTML(answer)}" data-options='${escapeHTML(JSON.stringify(options))}' tabindex="0"></span>`;
+      const value = clozeValues[id] || '';
+      let cls = 'blank';
+      if (value) cls += ' filled';
+      if (clozeSubmitted) cls += (value === answer ? ' correct' : ' wrong');
+      const inner = value ? renderLatexHTML(value) : (clozeSubmitted ? '　' : '');
+      out += `<span class="${cls}" id="${id}" data-answer="${escapeHTML(answer)}" data-options='${escapeHTML(JSON.stringify(options))}' data-value="${escapeHTML(value)}" tabindex="0">${inner}</span>`;
+      if (clozeSubmitted && value !== answer) {
+        out += `<span class="answer-inline">（${renderLatexHTML(answer)}）</span>`;
+      }
     }
     last = re.lastIndex;
   }
@@ -773,7 +791,8 @@ function updateToolbar() {
   document.getElementById('submitBtn').style.display = quiz ? '' : 'none';
   document.getElementById('redoBtn').style.display = quiz ? '' : 'none';
   if (!quiz) document.getElementById('nextQuestionBtn').style.display = 'none';
-  document.getElementById('score').textContent = '';
+  if (quiz && clozePassed) document.getElementById('nextQuestionBtn').style.display = '';
+  document.getElementById('score').textContent = quiz ? clozeScoreText : '';
   document.getElementById('hint').textContent = preview ? '先看完整导图；学习结束后点击“记住了”进入挖空练习。' : (quiz ? '点击浅色空格块选择答案；提交核对后才会出现“进入试题”。' : '完成全部选择题后提交，系统会显示答案和解析。');
 }
 
@@ -843,6 +862,10 @@ function render(keepView=false, heightPass=0) {
 
 function startQuiz() {
   mode = 'quiz';
+  clozeValues = {};
+  clozeSubmitted = false;
+  clozeScoreText = '';
+  clozePassed = false;
   try { history.replaceState({phase:'quiz'}, '', location.href); history.pushState({phase:'quiz'}, '', location.href); } catch(e) {}
   render(false);
 }
@@ -874,15 +897,25 @@ function openOptions(blank) {
 
 function chooseOption(blank, value) {
   blank.dataset.value = value;
+  clozeValues[blank.id] = value;
+  clozeSubmitted = false;
+  clozeScoreText = '';
+  clozePassed = false;
+
   blank.innerHTML = renderLatexHTML(value);
   blank.classList.add('filled');
   blank.classList.remove('correct','wrong');
   const nxt = blank.nextElementSibling;
   if (nxt && nxt.classList && nxt.classList.contains('answer-inline')) nxt.remove();
+  document.getElementById('score').textContent = '';
+  document.getElementById('nextQuestionBtn').style.display = 'none';
   document.getElementById('optionMenu').style.display = 'none';
+
+  // 这里只重新渲染当前空格里的公式，不再触发整张导图 render。
+  // 否则自动高度重排会重建全部 DOM，导致已填答案被清空。
   typesetMath([blank]).then(() => {
     requestAnimationFrame(() => {
-      if (mode !== 'questions' && updateMeasuredHeights()) render(true, 0);
+      updateMeasuredHeights();
     });
   });
 }
@@ -898,9 +931,11 @@ document.addEventListener('click', () => { document.getElementById('optionMenu')
 function submitAnswers() {
   let total = 0;
   let right = 0;
+  clozeSubmitted = true;
+
   document.querySelectorAll('.blank').forEach(b => {
     total++;
-    const value = b.dataset.value || '';
+    const value = clozeValues[b.id] || b.dataset.value || '';
     const answer = b.dataset.answer || '';
     const old = b.nextElementSibling;
     if (old && old.classList && old.classList.contains('answer-inline')) old.remove();
@@ -922,10 +957,13 @@ function submitAnswers() {
 
   const rate = total ? right / total : 0;
   const pct = Math.round(rate * 100);
+  clozeScoreText = total ? `挖空得分：${right}/${total}（正确率：${pct}%）` : '';
+  clozePassed = !!(total && questions.length && rate >= 0.75);
+
   const scoreEl = document.getElementById('score');
-  scoreEl.textContent = total ? `挖空得分：${right}/${total}（正确率：${pct}%）` : '';
+  scoreEl.textContent = clozeScoreText;
   const nextBtn = document.getElementById('nextQuestionBtn');
-  if (total && questions.length && rate >= 0.75) {
+  if (clozePassed) {
     nextBtn.style.display = '';
     document.getElementById('hint').textContent = '挖空正确率已达标，可以进入试题。';
   } else if (total && questions.length) {
@@ -933,12 +971,20 @@ function submitAnswers() {
     document.getElementById('hint').textContent = '挖空正确率低于 75%，请点击“重做”，达到 75% 后才能进入试题。';
     alert(`本次挖空正确率为 ${pct}%，低于 75%。请重做挖空练习，达标后才能进入试题。`);
   }
+
   typesetMath().then(() => {
-    requestAnimationFrame(() => { if (mode !== 'questions' && updateMeasuredHeights()) render(true, 0); });
+    requestAnimationFrame(() => {
+      updateMeasuredHeights();
+    });
   });
 }
 
 function resetAnswers() {
+  clozeValues = {};
+  clozeSubmitted = false;
+  clozeScoreText = '';
+  clozePassed = false;
+
   document.querySelectorAll('.answer-inline').forEach(e => e.remove());
   document.querySelectorAll('.blank').forEach(b => {
     clearTypesetElement(b);
@@ -948,7 +994,7 @@ function resetAnswers() {
   });
   document.getElementById('score').textContent = '';
   document.getElementById('nextQuestionBtn').style.display = 'none';
-  typesetMath().then(() => { if (mode !== 'questions' && updateMeasuredHeights()) render(true, 0); });
+  updateMeasuredHeights();
 }
 
 function renderQuestions() {
