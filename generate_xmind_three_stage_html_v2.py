@@ -443,7 +443,7 @@ window.MathJax = {
     font-weight:800;
     letter-spacing:.2px;
     color:#111827;
-    line-height:1.38;
+    line-height:1.34;
     overflow-wrap:anywhere;
   }
 
@@ -471,7 +471,7 @@ window.MathJax = {
 
   .note {
     font-size:15px;
-    line-height:1.82;
+    line-height:1.72;
     color:#374151;
     background:#f8fafc;
     border:1px solid #edf1f7;
@@ -482,7 +482,7 @@ window.MathJax = {
 
   .level3 .note {
     font-size:15px;
-    line-height:1.86;
+    line-height:1.76;
   }
 
   .note mjx-container,
@@ -841,42 +841,53 @@ function stripCloze(s) {
 function estimateTextHeight(text, charsPerLine, lineHeight, base=0) {
   const normalized = stripCloze(text || '').replace(/\$\$|\\\(|\\\)|\\\[|\\\]/g, '');
   const len = [...normalized].length;
-  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]|\$|\\\(|\\\)/g) || []).length * 12;
+  const formulaExtra = ((text || '').match(/\$\$|\\\[|\\\]|\$|\\\(|\\\)/g) || []).length * 8;
   return base + Math.max(1, Math.ceil(len / charsPerLine)) * lineHeight + formulaExtra;
 }
 
 function measureNode(node) {
   const w = levelWidths[Math.min(node.level, 3)] || 420;
+
+  const measured = measuredHeights[node.id];
+
+  // 关键修改：
+  // 只要已经测过真实 DOM 高度，就优先使用真实高度。
+  // 不再用 Math.max(估算高度, 真实高度)，否则估算偏大时会永远留下大片空白。
+  if (measured) {
+    return {
+      w,
+      h: Math.max(measured, node.level === 1 ? 76 : 62)
+    };
+  }
+
   const noteCount = (node.notes || []).length;
   const imgCount = (node.images || []).length;
 
-  let h = node.level === 1 ? 78 : 54;
+  let h = node.level === 1 ? 74 : 50;
 
   if (node.level === 1) {
     h += estimateTextHeight(node.title || '', 10, 20, 0);
   } else if (node.level === 2) {
-    h += estimateTextHeight(node.title || '', 14, 22, 0);
+    h += estimateTextHeight(node.title || '', 14, 21, 0);
   } else {
-    h += estimateTextHeight(node.title || '', 38, 24, 0);
+    h += estimateTextHeight(node.title || '', 42, 22, 0);
   }
 
   if (noteCount) {
     for (const note of node.notes) {
-      h += estimateTextHeight(note, 48, 27, 24);
+      h += estimateTextHeight(note, 54, 24, 20);
     }
   }
 
-  // 这里只给图片一个较小的初始预估高度。
-  // 图片加载完成后会用真实 DOM 高度重新测量和重排，避免提前预留过多空白。
+  // 图片只给很小的初始高度。
+  // 图片加载完成后会由 updateMeasuredHeights 按真实高度重新排版。
   if (imgCount) {
-    h += imgCount * 110;
+    h += imgCount * 80;
   }
-
-  const measured = measuredHeights[node.id] || 0;
 
   return {
     w,
-    h: Math.max(h, measured, node.level === 1 ? 76 : 62)
+    h: Math.max(h, node.level === 1 ? 76 : 62)
   };
 }
 
@@ -1003,11 +1014,9 @@ function updateMeasuredHeights() {
     const inner = el.querySelector('.node-inner');
 
     const contentHeight = Math.ceil(inner ? inner.scrollHeight : el.scrollHeight);
-    const targetHeight = contentHeight + 18;
+    const targetHeight = contentHeight + 8;
     const current = measuredHeights[id] || 0;
 
-    // 这版允许高度变小，避免上一版因估算过高而留下大片空白。
-    // 同时保留 3px 容差，避免浏览器小数取整导致反复重排。
     if (Math.abs(targetHeight - current) > 3) {
       measuredHeights[id] = targetHeight;
       changed = true;
